@@ -11,7 +11,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/bwmarrin/discordgo"
+	"github.com/hackirby/discordgo"
 )
 
 func init() {
@@ -53,10 +53,6 @@ func main() {
 	// Register guildCreate as a callback for the guildCreate events.
 	dg.AddHandler(guildCreate)
 
-	// We need information about guilds (which includes their channels),
-	// messages and voice states.
-	dg.Identify.Intents = discordgo.IntentsGuilds | discordgo.IntentsGuildMessages | discordgo.IntentsGuildVoiceStates
-
 	// Open the websocket and begin listening.
 	err = dg.Open()
 	if err != nil {
@@ -66,7 +62,7 @@ func main() {
 	// Wait here until CTRL-C or other term signal is received.
 	fmt.Println("Airhorn is now running.  Press CTRL-C to exit.")
 	sc := make(chan os.Signal, 1)
-	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
+	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt, os.Kill)
 	<-sc
 
 	// Cleanly close down the Discord session.
@@ -78,7 +74,7 @@ func main() {
 func ready(s *discordgo.Session, event *discordgo.Ready) {
 
 	// Set the playing status.
-	s.UpdateGameStatus(0, "!airhorn")
+	s.UpdateStatus(0, "!airhorn")
 }
 
 // This function will be called (due to AddHandler above) every time a new

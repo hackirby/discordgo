@@ -1,5 +1,5 @@
 // Discordgo - Discord bindings for Go
-// Available at https://github.com/bwmarrin/discordgo
+// Available at https://github.com/hackirby/discordgo
 
 // Copyright 2015-2016 Bruce Marriner <bruce@sqls.net>.  All rights reserved.
 // Use of this source code is governed by a BSD-style
@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"runtime"
 	"sync/atomic"
 	"time"
 
@@ -33,7 +34,7 @@ var ErrWSAlreadyOpen = errors.New("web socket already opened")
 var ErrWSNotFound = errors.New("no websocket connection exists")
 
 // ErrWSShardBounds is thrown when you try to use a shard ID that is
-// more than the total shard count
+// less than the total shard count
 var ErrWSShardBounds = errors.New("ShardID must be less than ShardCount")
 
 type resumePacket struct {
@@ -46,7 +47,7 @@ type resumePacket struct {
 }
 
 // Open creates a websocket connection to Discord.
-// See: https://discord.com/developers/docs/topics/gateway#connecting
+// See: https://discordapp.com/developers/docs/topics/gateway#connecting
 func (s *Session) Open() error {
 	s.log(LogInformational, "called")
 
@@ -77,9 +78,9 @@ func (s *Session) Open() error {
 	s.log(LogInformational, "connecting to gateway %s", s.gateway)
 	header := http.Header{}
 	header.Add("accept-encoding", "zlib")
-	s.wsConn, _, err = s.Dialer.Dial(s.gateway, header)
+	s.wsConn, _, err = websocket.DefaultDialer.Dial(s.gateway, header)
 	if err != nil {
-		s.log(LogError, "error connecting to gateway %s, %s", s.gateway, err)
+		s.log(LogWarning, "error connecting to gateway %s, %s", s.gateway, err)
 		s.gateway = "" // clear cached gateway
 		s.wsConn = nil // Just to be safe.
 		return err
@@ -275,7 +276,7 @@ func (s *Session) HeartbeatLatency() time.Duration {
 // heartbeat sends regular heartbeats to Discord so it knows the client
 // is still connected.  If you do not send these heartbeats Discord will
 // disconnect the websocket connection after a few seconds.
-func (s *Session) heartbeat(wsConn *websocket.Conn, listening <-chan interface{}, heartbeatIntervalMsec time.Duration) {
+func (s *Session) heartbeat(wsConn *websocket.Conn, listening <-chan interface{}, heartbeatInterval time.Duration) {
 
 	s.log(LogInformational, "called")
 
@@ -284,7 +285,7 @@ func (s *Session) heartbeat(wsConn *websocket.Conn, listening <-chan interface{}
 	}
 
 	var err error
-	ticker := time.NewTicker(heartbeatIntervalMsec * time.Millisecond)
+	ticker := time.NewTicker(heartbeatInterval * time.Millisecond)
 	defer ticker.Stop()
 
 	for {
@@ -297,7 +298,7 @@ func (s *Session) heartbeat(wsConn *websocket.Conn, listening <-chan interface{}
 		s.LastHeartbeatSent = time.Now().UTC()
 		err = wsConn.WriteJSON(heartbeatOp{1, sequence})
 		s.wsMutex.Unlock()
-		if err != nil || time.Now().UTC().Sub(last) > (heartbeatIntervalMsec*FailedHeartbeatAcks) {
+		if err != nil || time.Now().UTC().Sub(last) > (heartbeatInterval*FailedHeartbeatAcks) {
 			if err != nil {
 				s.log(LogError, "error sending heartbeat to gateway %s, %s", s.gateway, err)
 			} else {
@@ -320,12 +321,12 @@ func (s *Session) heartbeat(wsConn *websocket.Conn, listening <-chan interface{}
 	}
 }
 
-// UpdateStatusData is provided to UpdateStatusComplex()
+// UpdateStatusData ia provided to UpdateStatusComplex()
 type UpdateStatusData struct {
-	IdleSince  *int        `json:"since"`
-	Activities []*Activity `json:"activities"`
-	AFK        bool        `json:"afk"`
-	Status     string      `json:"status"`
+	IdleSince *int   `json:"since"`
+	Game      *Game  `json:"game"`
+	AFK       bool   `json:"afk"`
+	Status    string `json:"status"`
 }
 
 type updateStatusOp struct {
@@ -333,7 +334,7 @@ type updateStatusOp struct {
 	Data UpdateStatusData `json:"d"`
 }
 
-func newUpdateStatusData(idle int, activityType ActivityType, name, url string) *UpdateStatusData {
+func newUpdateStatusData(idle int, gameType GameType, game, url string) *UpdateStatusData {
 	usd := &UpdateStatusData{
 		Status: "online",
 	}
@@ -342,86 +343,47 @@ func newUpdateStatusData(idle int, activityType ActivityType, name, url string) 
 		usd.IdleSince = &idle
 	}
 
-	if name != "" {
-		usd.Activities = []*Activity{{
-			Name: name,
-			Type: activityType,
+	if game != "" {
+		usd.Game = &Game{
+			Name: game,
+			Type: gameType,
 			URL:  url,
-		}}
+		}
 	}
 
 	return usd
 }
 
-// UpdateGameStatus is used to update the user's status.
+// UpdateStatus is used to update the user's status.
 // If idle>0 then set status to idle.
-// If name!="" then set game.
-// if otherwise, set status to active, and no activity.
-func (s *Session) UpdateGameStatus(idle int, name string) (err error) {
-	return s.UpdateStatusComplex(*newUpdateStatusData(idle, ActivityTypeGame, name, ""))
-}
-
-// UpdateWatchStatus is used to update the user's watch status.
-// If idle>0 then set status to idle.
-// If name!="" then set movie/stream.
-// if otherwise, set status to active, and no activity.
-func (s *Session) UpdateWatchStatus(idle int, name string) (err error) {
-	return s.UpdateStatusComplex(*newUpdateStatusData(idle, ActivityTypeWatching, name, ""))
+// If game!="" then set game.
+// if otherwise, set status to active, and no game.
+func (s *Session) UpdateStatus(idle int, game string) (err error) {
+	return s.UpdateStatusComplex(*newUpdateStatusData(idle, GameTypeGame, game, ""))
 }
 
 // UpdateStreamingStatus is used to update the user's streaming status.
 // If idle>0 then set status to idle.
-// If name!="" then set game.
-// If name!="" and url!="" then set the status type to streaming with the URL set.
+// If game!="" then set game.
+// If game!="" and url!="" then set the status type to streaming with the URL set.
 // if otherwise, set status to active, and no game.
-func (s *Session) UpdateStreamingStatus(idle int, name string, url string) (err error) {
-	gameType := ActivityTypeGame
+func (s *Session) UpdateStreamingStatus(idle int, game string, url string) (err error) {
+	gameType := GameTypeGame
 	if url != "" {
-		gameType = ActivityTypeStreaming
+		gameType = GameTypeStreaming
 	}
-	return s.UpdateStatusComplex(*newUpdateStatusData(idle, gameType, name, url))
+	return s.UpdateStatusComplex(*newUpdateStatusData(idle, gameType, game, url))
 }
 
 // UpdateListeningStatus is used to set the user to "Listening to..."
-// If name!="" then set to what user is listening to
-// Else, set user to active and no activity.
-func (s *Session) UpdateListeningStatus(name string) (err error) {
-	return s.UpdateStatusComplex(*newUpdateStatusData(0, ActivityTypeListening, name, ""))
-}
-
-// UpdateCustomStatus is used to update the user's custom status.
-// If state!="" then set the custom status.
-// Else, set user to active and remove the custom status.
-func (s *Session) UpdateCustomStatus(state string) (err error) {
-	data := UpdateStatusData{
-		Status: "online",
-	}
-
-	if state != "" {
-		// Discord requires a non-empty activity name, therefore we provide "Custom Status" as a placeholder.
-		data.Activities = []*Activity{{
-			Name:  "Custom Status",
-			Type:  ActivityTypeCustom,
-			State: state,
-		}}
-	}
-
-	return s.UpdateStatusComplex(data)
+// If game!="" then set to what user is listening to
+// Else, set user to active and no game.
+func (s *Session) UpdateListeningStatus(game string) (err error) {
+	return s.UpdateStatusComplex(*newUpdateStatusData(0, GameTypeListening, game, ""))
 }
 
 // UpdateStatusComplex allows for sending the raw status update data untouched by discordgo.
 func (s *Session) UpdateStatusComplex(usd UpdateStatusData) (err error) {
-	// The comment does say "untouched by discordgo", but we might need to lie a bit here.
-	// The Discord documentation lists `activities` as being nullable, but in practice this
-	// doesn't seem to be the case. I had filed an issue about this at
-	// https://github.com/discord/discord-api-docs/issues/2559, but as of writing this
-	// haven't had any movement on it, so at this point I'm assuming this is an error,
-	// and am fixing this bug accordingly. Because sending `null` for `activities` instantly
-	// disconnects us, I think that disallowing it from being sent in `UpdateStatusComplex`
-	// isn't that big of an issue.
-	if usd.Activities == nil {
-		usd.Activities = make([]*Activity, 0)
-	}
 
 	s.RLock()
 	defer s.RUnlock()
@@ -437,13 +399,9 @@ func (s *Session) UpdateStatusComplex(usd UpdateStatusData) (err error) {
 }
 
 type requestGuildMembersData struct {
-	// TODO: Deprecated. Use string instead of []string
-	GuildIDs  []string  `json:"guild_id"`
-	Query     *string   `json:"query,omitempty"`
-	UserIDs   *[]string `json:"user_ids,omitempty"`
-	Limit     int       `json:"limit"`
-	Nonce     string    `json:"nonce,omitempty"`
-	Presences bool      `json:"presences"`
+	GuildID string `json:"guild_id"`
+	Query   string `json:"query"`
+	Limit   int    `json:"limit"`
 }
 
 type requestGuildMembersOp struct {
@@ -453,75 +411,22 @@ type requestGuildMembersOp struct {
 
 // RequestGuildMembers requests guild members from the gateway
 // The gateway responds with GuildMembersChunk events
-// guildID   : Single Guild ID to request members of
-// query     : String that username starts with, leave empty to return all members
-// limit     : Max number of items to return, or 0 to request all members matched
-// nonce     : Nonce to identify the Guild Members Chunk response
-// presences : Whether to request presences of guild members
-func (s *Session) RequestGuildMembers(guildID, query string, limit int, nonce string, presences bool) error {
-	return s.RequestGuildMembersBatch([]string{guildID}, query, limit, nonce, presences)
-}
-
-// RequestGuildMembersList requests guild members from the gateway
-// The gateway responds with GuildMembersChunk events
-// guildID   : Single Guild ID to request members of
-// userIDs   : IDs of users to fetch
-// limit     : Max number of items to return, or 0 to request all members matched
-// nonce     : Nonce to identify the Guild Members Chunk response
-// presences : Whether to request presences of guild members
-func (s *Session) RequestGuildMembersList(guildID string, userIDs []string, limit int, nonce string, presences bool) error {
-	return s.RequestGuildMembersBatchList([]string{guildID}, userIDs, limit, nonce, presences)
-}
-
-// RequestGuildMembersBatch requests guild members from the gateway
-// The gateway responds with GuildMembersChunk events
-// guildID   : Slice of guild IDs to request members of
-// query     : String that username starts with, leave empty to return all members
-// limit     : Max number of items to return, or 0 to request all members matched
-// nonce     : Nonce to identify the Guild Members Chunk response
-// presences : Whether to request presences of guild members
-//
-// NOTE: this function is deprecated, please use RequestGuildMembers instead
-func (s *Session) RequestGuildMembersBatch(guildIDs []string, query string, limit int, nonce string, presences bool) (err error) {
-	data := requestGuildMembersData{
-		GuildIDs:  guildIDs,
-		Query:     &query,
-		Limit:     limit,
-		Nonce:     nonce,
-		Presences: presences,
-	}
-	err = s.requestGuildMembers(data)
-	return
-}
-
-// RequestGuildMembersBatchList requests guild members from the gateway
-// The gateway responds with GuildMembersChunk events
-// guildID   : Slice of guild IDs to request members of
-// userIDs   : IDs of users to fetch
-// limit     : Max number of items to return, or 0 to request all members matched
-// nonce     : Nonce to identify the Guild Members Chunk response
-// presences : Whether to request presences of guild members
-//
-// NOTE: this function is deprecated, please use RequestGuildMembersList instead
-func (s *Session) RequestGuildMembersBatchList(guildIDs []string, userIDs []string, limit int, nonce string, presences bool) (err error) {
-	data := requestGuildMembersData{
-		GuildIDs:  guildIDs,
-		UserIDs:   &userIDs,
-		Limit:     limit,
-		Nonce:     nonce,
-		Presences: presences,
-	}
-	err = s.requestGuildMembers(data)
-	return
-}
-
-func (s *Session) requestGuildMembers(data requestGuildMembersData) (err error) {
+// guildID  : The ID of the guild to request members of
+// query    : String that username starts with, leave empty to return all members
+// limit    : Max number of items to return, or 0 to request all members matched
+func (s *Session) RequestGuildMembers(guildID, query string, limit int) (err error) {
 	s.log(LogInformational, "called")
 
 	s.RLock()
 	defer s.RUnlock()
 	if s.wsConn == nil {
 		return ErrWSNotFound
+	}
+
+	data := requestGuildMembersData{
+		GuildID: guildID,
+		Query:   query,
+		Limit:   limit,
 	}
 
 	s.wsMutex.Lock()
@@ -642,9 +547,7 @@ func (s *Session) onEvent(messageType int, message []byte) (*Event, error) {
 		e.Struct = eh.New()
 
 		// Attempt to unmarshal our event.
-		if err = json.Unmarshal(e.RawData, e.Struct); err != nil {
-			s.log(LogError, "error unmarshalling %s event, %s", e.Type, err)
-		}
+		json.Unmarshal(e.RawData, e.Struct)
 
 		// Send event to any registered event handlers for it's type.
 		// Because the above doesn't cancel this, in case of an error
@@ -682,16 +585,16 @@ type voiceChannelJoinOp struct {
 
 // ChannelVoiceJoin joins the session user to a voice channel.
 //
-//    gID     : Guild ID of the channel to join.
-//    cID     : Channel ID of the channel to join.
-//    mute    : If true, you will be set to muted upon joining.
-//    deaf    : If true, you will be set to deafened upon joining.
+//	gID     : Guild ID of the channel to join.
+//	cID     : Channel ID of the channel to join.
+//	mute    : If true, you will be set to muted upon joining.
+//	deaf    : If true, you will be set to deafened upon joining.
 func (s *Session) ChannelVoiceJoin(gID, cID string, mute, deaf bool) (voice *VoiceConnection, err error) {
 
 	s.log(LogInformational, "called")
 
 	s.RLock()
-	voice, _ = s.VoiceConnections[gID]
+	voice = s.VoiceConnections[gID]
 	s.RUnlock()
 
 	if voice == nil {
@@ -729,10 +632,10 @@ func (s *Session) ChannelVoiceJoin(gID, cID string, mute, deaf bool) (voice *Voi
 //
 // This should only be used when the VoiceServerUpdate will be intercepted and used elsewhere.
 //
-//    gID     : Guild ID of the channel to join.
-//    cID     : Channel ID of the channel to join, leave empty to disconnect.
-//    mute    : If true, you will be set to muted upon joining.
-//    deaf    : If true, you will be set to deafened upon joining.
+//	gID     : Guild ID of the channel to join.
+//	cID     : Channel ID of the channel to join, leave empty to disconnect.
+//	mute    : If true, you will be set to muted upon joining.
+//	deaf    : If true, you will be set to deafened upon joining.
 func (s *Session) ChannelVoiceJoinManual(gID, cID string, mute, deaf bool) (err error) {
 
 	s.log(LogInformational, "called")
@@ -817,42 +720,55 @@ func (s *Session) onVoiceServerUpdate(st *VoiceServerUpdate) {
 	}
 }
 
+type identifyProperties struct {
+	OS              string `json:"$os"`
+	Browser         string `json:"$browser"`
+	Device          string `json:"$device"`
+	Referer         string `json:"$referer"`
+	ReferringDomain string `json:"$referring_domain"`
+}
+
+type identifyData struct {
+	Token          string             `json:"token"`
+	Properties     identifyProperties `json:"properties"`
+	LargeThreshold int                `json:"large_threshold"`
+	Compress       bool               `json:"compress"`
+	Shard          *[2]int            `json:"shard,omitempty"`
+}
+
 type identifyOp struct {
-	Op   int      `json:"op"`
-	Data Identify `json:"d"`
+	Op   int          `json:"op"`
+	Data identifyData `json:"d"`
 }
 
 // identify sends the identify packet to the gateway
 func (s *Session) identify() error {
-	s.log(LogDebug, "called")
 
-	// TODO: This is a temporary block of code to help
-	// maintain backwards compatibility
-	if s.Compress == false {
-		s.Identify.Compress = false
+	properties := identifyProperties{runtime.GOOS,
+		"Discordgo v" + VERSION,
+		"",
+		"",
+		"",
 	}
 
-	// TODO: This is a temporary block of code to help
-	// maintain backwards compatibility
-	if s.Token != "" && s.Identify.Token == "" {
-		s.Identify.Token = s.Token
+	data := identifyData{s.Token,
+		properties,
+		250,
+		s.Compress,
+		nil,
 	}
 
-	// TODO: Below block should be refactored so ShardID and ShardCount
-	// can be deprecated and their usage moved to the Session.Identify
-	// struct
 	if s.ShardCount > 1 {
 
 		if s.ShardID >= s.ShardCount {
 			return ErrWSShardBounds
 		}
 
-		s.Identify.Shard = &[2]int{s.ShardID, s.ShardCount}
+		data.Shard = &[2]int{s.ShardID, s.ShardCount}
 	}
 
-	// Send Identify packet to Discord
-	op := identifyOp{2, s.Identify}
-	s.log(LogDebug, "Identify Packet: \n%#v", op)
+	op := identifyOp{2, data}
+
 	s.wsMutex.Lock()
 	err := s.wsConn.WriteJSON(op)
 	s.wsMutex.Unlock()
@@ -882,18 +798,17 @@ func (s *Session) reconnect() {
 				// However, there seems to be cases where something "weird"
 				// happens.  So we're doing this for now just to improve
 				// stability in those edge cases.
-				if s.ShouldReconnectVoiceOnSessionError {
-					s.RLock()
-					defer s.RUnlock()
-					for _, v := range s.VoiceConnections {
+				s.RLock()
+				defer s.RUnlock()
+				for _, v := range s.VoiceConnections {
 
-						s.log(LogInformational, "reconnecting voice connection to guild %s", v.GuildID)
-						go v.reconnect()
+					s.log(LogInformational, "reconnecting voice connection to guild %s", v.GuildID)
+					go v.reconnect()
 
-						// This is here just to prevent violently spamming the
-						// voice reconnects
-						time.Sleep(1 * time.Second)
-					}
+					// This is here just to prevent violently spamming the
+					// voice reconnects
+					time.Sleep(1 * time.Second)
+
 				}
 				return
 			}
@@ -916,14 +831,11 @@ func (s *Session) reconnect() {
 	}
 }
 
-// Close closes a websocket and stops all listening/heartbeat goroutines.
-// TODO: Add support for Voice WS/UDP
 func (s *Session) Close() error {
 	return s.CloseWithCode(websocket.CloseNormalClosure)
 }
 
-// CloseWithCode closes a websocket using the provided closeCode and stops all
-// listening/heartbeat goroutines.
+// Close closes a websocket and stops all listening/heartbeat goroutines.
 // TODO: Add support for Voice WS/UDP connections
 func (s *Session) CloseWithCode(closeCode int) (err error) {
 

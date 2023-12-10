@@ -1,5 +1,5 @@
 // Discordgo - Discord bindings for Go
-// Available at https://github.com/bwmarrin/discordgo
+// Available at https://github.com/hackirby/discordgo
 
 // Copyright 2015-2016 Bruce Marriner <bruce@sqls.net>.  All rights reserved.
 // Use of this source code is governed by a BSD-style
@@ -37,12 +37,13 @@ const (
 // Logger can be used to replace the standard logging for discordgo
 var Logger func(msgL, caller int, format string, a ...interface{})
 
-// msglog provides package wide logging consistency for discordgo
+// msglog provides package wide logging consistancy for discordgo
 // the format, a...  portion this command follows that of fmt.Printf
-//   msgL   : LogLevel of the message
-//   caller : 1 + the number of callers away from the message source
-//   format : Printf style message format
-//   a ...  : comma separated list of values to pass
+//
+//	msgL   : LogLevel of the message
+//	caller : 1 + the number of callers away from the message source
+//	format : Printf style message format
+//	a ...  : comma separated list of values to pass
 func msglog(msgL, caller int, format string, a ...interface{}) {
 
 	if Logger != nil {
@@ -90,7 +91,7 @@ func (v *VoiceConnection) log(msgL int, format string, a ...interface{}) {
 	msglog(msgL, 2, format, a...)
 }
 
-// printJSON is a helper function to display JSON data in an easy to read format.
+// printJSON is a helper function to display JSON data in a easy to read format.
 /* NOT USED ATM
 func printJSON(body []byte) {
 	var prettyJSON bytes.Buffer

@@ -1,9 +1,6 @@
 package discordgo
 
 import (
-	"context"
-	"errors"
-	"net/http"
 	"testing"
 )
 
@@ -101,6 +98,17 @@ func TestUserChannelCreate(t *testing.T) {
 	// TODO make sure the channel was added
 }
 
+func TestUserChannels(t *testing.T) {
+	if dg == nil {
+		t.Skip("Cannot TestUserChannels, dg not set.")
+	}
+
+	_, err := dg.UserChannels()
+	if err != nil {
+		t.Errorf(err.Error())
+	}
+}
+
 func TestUserGuilds(t *testing.T) {
 	if dg == nil {
 		t.Skip("Cannot TestUserGuilds, dg not set.")
@@ -109,6 +117,41 @@ func TestUserGuilds(t *testing.T) {
 	_, err := dg.UserGuilds(10, "", "")
 	if err != nil {
 		t.Errorf(err.Error())
+	}
+}
+
+func TestUserSettings(t *testing.T) {
+	if dg == nil {
+		t.Skip("Cannot TestUserSettings, dg not set.")
+	}
+
+	_, err := dg.UserSettings()
+	if err != nil {
+		t.Errorf(err.Error())
+	}
+}
+
+func TestUserUpdateStatus(t *testing.T) {
+	if dg == nil {
+		t.Skip("Cannot TestUserSettings, dg not set.")
+	}
+
+	_, err := dg.UserUpdateStatus(StatusDoNotDisturb)
+	if err != nil {
+		t.Errorf(err.Error())
+	}
+}
+
+// TestLogout tests the Logout() function. This should not return an error.
+func TestLogout(t *testing.T) {
+
+	if dg == nil {
+		t.Skip("Cannot TestLogout, dg not set.")
+	}
+
+	err := dg.Logout()
+	if err != nil {
+		t.Errorf("Logout() returned error: %+v", err)
 	}
 }
 
@@ -131,6 +174,18 @@ func TestGatewayBot(t *testing.T) {
 	_, err := dgBot.GatewayBot()
 	if err != nil {
 		t.Errorf("GatewayBot() returned error: %+v", err)
+	}
+}
+
+func TestVoiceICE(t *testing.T) {
+
+	if dg == nil {
+		t.Skip("Skipping, dg not set.")
+	}
+
+	_, err := dg.VoiceICE()
+	if err != nil {
+		t.Errorf("VoiceICE() returned error: %+v", err)
 	}
 }
 
@@ -230,48 +285,3 @@ func TestGuildPrune(t *testing.T) {
 	}
 }
 */
-
-func Test_unmarshal(t *testing.T) {
-	err := unmarshal([]byte{}, &struct{}{})
-	if !errors.Is(err, ErrJSONUnmarshal) {
-		t.Errorf("Unexpected error type: %T", err)
-	}
-}
-
-func TestWithContext(t *testing.T) {
-	// Set up a test context.
-	type key struct{}
-	ctx := context.WithValue(context.Background(), key{}, "value")
-
-	// Set up a test client.
-	session, err := New("")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	testErr := errors.New("test")
-
-	// Intercept the request to assert the context.
-	session.Client.Transport = roundTripperFunc(func(r *http.Request) (*http.Response, error) {
-		val, _ := r.Context().Value(key{}).(string)
-		if val != "value" {
-			t.Errorf("missing value in context (got %q, wanted %q)", val, "value")
-		}
-		return nil, testErr
-	})
-
-	// Run any client method using WithContext.
-	_, err = session.User("", WithContext(ctx))
-
-	// Verify that the assertion code was actually run.
-	if !errors.Is(err, testErr) {
-		t.Errorf("unexpected error %v returned from client", err)
-	}
-}
-
-// roundTripperFunc implements http.RoundTripper.
-type roundTripperFunc func(*http.Request) (*http.Response, error)
-
-func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
-	return f(req)
-}

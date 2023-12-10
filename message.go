@@ -1,5 +1,5 @@
 // Discordgo - Discord bindings for Go
-// Available at https://github.com/bwmarrin/discordgo
+// Available at https://github.com/hackirby/discordgo
 
 // Copyright 2015-2016 Bruce Marriner <bruce@sqls.net>.  All rights reserved.
 // Use of this source code is governed by a BSD-style
@@ -10,39 +10,29 @@
 package discordgo
 
 import (
-	"encoding/json"
 	"io"
 	"regexp"
 	"strings"
-	"time"
 )
 
 // MessageType is the type of Message
-// https://discord.com/developers/docs/resources/channel#message-object-message-types
 type MessageType int
 
 // Block contains the valid known MessageType values
 const (
-	MessageTypeDefault                               MessageType = 0
-	MessageTypeRecipientAdd                          MessageType = 1
-	MessageTypeRecipientRemove                       MessageType = 2
-	MessageTypeCall                                  MessageType = 3
-	MessageTypeChannelNameChange                     MessageType = 4
-	MessageTypeChannelIconChange                     MessageType = 5
-	MessageTypeChannelPinnedMessage                  MessageType = 6
-	MessageTypeGuildMemberJoin                       MessageType = 7
-	MessageTypeUserPremiumGuildSubscription          MessageType = 8
-	MessageTypeUserPremiumGuildSubscriptionTierOne   MessageType = 9
-	MessageTypeUserPremiumGuildSubscriptionTierTwo   MessageType = 10
-	MessageTypeUserPremiumGuildSubscriptionTierThree MessageType = 11
-	MessageTypeChannelFollowAdd                      MessageType = 12
-	MessageTypeGuildDiscoveryDisqualified            MessageType = 14
-	MessageTypeGuildDiscoveryRequalified             MessageType = 15
-	MessageTypeThreadCreated                         MessageType = 18
-	MessageTypeReply                                 MessageType = 19
-	MessageTypeChatInputCommand                      MessageType = 20
-	MessageTypeThreadStarterMessage                  MessageType = 21
-	MessageTypeContextMenuCommand                    MessageType = 23
+	MessageTypeDefault MessageType = iota
+	MessageTypeRecipientAdd
+	MessageTypeRecipientRemove
+	MessageTypeCall
+	MessageTypeChannelNameChange
+	MessageTypeChannelIconChange
+	MessageTypeChannelPinnedMessage
+	MessageTypeGuildMemberJoin
+	MessageTypeUserPremiumGuildSubscription
+	MessageTypeUserPremiumGuildSubscriptionTierOne
+	MessageTypeUserPremiumGuildSubscriptionTierTwo
+	MessageTypeUserPremiumGuildSubscriptionTierThree
+	MessageTypeChannelFollowAdd
 )
 
 // A Message stores all data related to a specific Discord message.
@@ -63,17 +53,17 @@ type Message struct {
 	// CAUTION: this field may be removed in a
 	// future API version; it is safer to calculate
 	// the creation time via the ID.
-	Timestamp time.Time `json:"timestamp"`
+	Timestamp Timestamp `json:"timestamp"`
 
 	// The time at which the last edit of the message
 	// occurred, if it has been edited.
-	EditedTimestamp *time.Time `json:"edited_timestamp"`
+	EditedTimestamp Timestamp `json:"edited_timestamp"`
 
 	// The roles mentioned in the message.
 	MentionRoles []string `json:"mention_roles"`
 
 	// Whether the message is text-to-speech.
-	TTS bool `json:"tts"`
+	Tts bool `json:"tts"`
 
 	// Whether the message mentions everyone.
 	MentionEveryone bool `json:"mention_everyone"`
@@ -85,10 +75,8 @@ type Message struct {
 	// A list of attachments present in the message.
 	Attachments []*MessageAttachment `json:"attachments"`
 
-	// A list of components attached to the message.
-	Components []MessageComponent `json:"-"`
-
-	// A list of embeds present in the message.
+	// A list of embeds present in the message. Multiple
+	// embeds can currently only be sent by webhooks.
 	Embeds []*MessageEmbed `json:"embeds"`
 
 	// A list of users mentioned in the message.
@@ -123,103 +111,14 @@ type Message struct {
 	// Is sent with Rich Presence-related chat embeds
 	Application *MessageApplication `json:"application"`
 
-	// MessageReference contains reference data sent with crossposted or reply messages.
-	// This does not contain the reference *to* this message; this is for when *this* message references another.
-	// To generate a reference to this message, use (*Message).Reference().
+	// MessageReference contains reference data sent with crossposted messages
 	MessageReference *MessageReference `json:"message_reference"`
-
-	// The message associated with the message_reference
-	// NOTE: This field is only returned for messages with a type of 19 (REPLY) or 21 (THREAD_STARTER_MESSAGE).
-	// If the message is a reply but the referenced_message field is not present,
-	// the backend did not attempt to fetch the message that was being replied to, so its state is unknown.
-	// If the field exists but is null, the referenced message was deleted.
-	ReferencedMessage *Message `json:"referenced_message"`
-
-	// Is sent when the message is a response to an Interaction, without an existing message.
-	// This means responses to message component interactions do not include this property,
-	// instead including a MessageReference, as components exist on preexisting messages.
-	Interaction *MessageInteraction `json:"interaction"`
 
 	// The flags of the message, which describe extra features of a message.
 	// This is a combination of bit masks; the presence of a certain permission can
 	// be checked by performing a bitwise AND between this int and the flag.
-	Flags MessageFlags `json:"flags"`
-
-	// The thread that was started from this message, includes thread member object
-	Thread *Channel `json:"thread,omitempty"`
-
-	// An array of Sticker objects, if any were sent.
-	StickerItems []*Sticker `json:"sticker_items"`
+	Flags int `json:"flags"`
 }
-
-// UnmarshalJSON is a helper function to unmarshal the Message.
-func (m *Message) UnmarshalJSON(data []byte) error {
-	type message Message
-	var v struct {
-		message
-		RawComponents []unmarshalableMessageComponent `json:"components"`
-	}
-	err := json.Unmarshal(data, &v)
-	if err != nil {
-		return err
-	}
-	*m = Message(v.message)
-	m.Components = make([]MessageComponent, len(v.RawComponents))
-	for i, v := range v.RawComponents {
-		m.Components[i] = v.MessageComponent
-	}
-	return err
-}
-
-// GetCustomEmojis pulls out all the custom (Non-unicode) emojis from a message and returns a Slice of the Emoji struct.
-func (m *Message) GetCustomEmojis() []*Emoji {
-	var toReturn []*Emoji
-	emojis := EmojiRegex.FindAllString(m.Content, -1)
-	if len(emojis) < 1 {
-		return toReturn
-	}
-	for _, em := range emojis {
-		parts := strings.Split(em, ":")
-		toReturn = append(toReturn, &Emoji{
-			ID:       parts[2][:len(parts[2])-1],
-			Name:     parts[1],
-			Animated: strings.HasPrefix(em, "<a:"),
-		})
-	}
-	return toReturn
-}
-
-// MessageFlags is the flags of "message" (see MessageFlags* consts)
-// https://discord.com/developers/docs/resources/channel#message-object-message-flags
-type MessageFlags int
-
-// Valid MessageFlags values
-const (
-	// MessageFlagsCrossPosted This message has been published to subscribed channels (via Channel Following).
-	MessageFlagsCrossPosted MessageFlags = 1 << 0
-	// MessageFlagsIsCrossPosted this message originated from a message in another channel (via Channel Following).
-	MessageFlagsIsCrossPosted MessageFlags = 1 << 1
-	// MessageFlagsSuppressEmbeds do not include any embeds when serializing this message.
-	MessageFlagsSuppressEmbeds MessageFlags = 1 << 2
-	// TODO: deprecated, remove when compatibility is not needed
-	MessageFlagsSupressEmbeds MessageFlags = 1 << 2
-	// MessageFlagsSourceMessageDeleted the source message for this crosspost has been deleted (via Channel Following).
-	MessageFlagsSourceMessageDeleted MessageFlags = 1 << 3
-	// MessageFlagsUrgent this message came from the urgent message system.
-	MessageFlagsUrgent MessageFlags = 1 << 4
-	// MessageFlagsHasThread this message has an associated thread, with the same id as the message.
-	MessageFlagsHasThread MessageFlags = 1 << 5
-	// MessageFlagsEphemeral this message is only visible to the user who invoked the Interaction.
-	MessageFlagsEphemeral MessageFlags = 1 << 6
-	// MessageFlagsLoading this message is an Interaction Response and the bot is "thinking".
-	MessageFlagsLoading MessageFlags = 1 << 7
-	// MessageFlagsFailedToMentionSomeRolesInThread this message failed to mention some roles and add their members to the thread.
-	MessageFlagsFailedToMentionSomeRolesInThread MessageFlags = 1 << 8
-	// MessageFlagsSuppressNotifications this message will not trigger push and desktop notifications.
-	MessageFlagsSuppressNotifications MessageFlags = 1 << 12
-	// MessageFlagsIsVoiceMessage this message is a voice message.
-	MessageFlagsIsVoiceMessage MessageFlags = 1 << 13
-)
 
 // File stores info about files you e.g. send in messages.
 type File struct {
@@ -230,41 +129,23 @@ type File struct {
 
 // MessageSend stores all parameters you can send with ChannelMessageSendComplex.
 type MessageSend struct {
-	Content         string                  `json:"content,omitempty"`
-	Embeds          []*MessageEmbed         `json:"embeds"`
-	TTS             bool                    `json:"tts"`
-	Components      []MessageComponent      `json:"components"`
-	Files           []*File                 `json:"-"`
-	AllowedMentions *MessageAllowedMentions `json:"allowed_mentions,omitempty"`
-	Reference       *MessageReference       `json:"message_reference,omitempty"`
-	StickerIDs      []string                `json:"sticker_ids"`
-	Flags           MessageFlags            `json:"flags,omitempty"`
+	Content string        `json:"content,omitempty"`
+	Embed   *MessageEmbed `json:"embed,omitempty"`
+	Tts     bool          `json:"tts"`
+	Files   []*File       `json:"-"`
 
 	// TODO: Remove this when compatibility is not required.
 	File *File `json:"-"`
-
-	// TODO: Remove this when compatibility is not required.
-	Embed *MessageEmbed `json:"-"`
 }
 
 // MessageEdit is used to chain parameters via ChannelMessageEditComplex, which
 // is also where you should get the instance from.
 type MessageEdit struct {
-	Content         *string                 `json:"content,omitempty"`
-	Components      []MessageComponent      `json:"components"`
-	Embeds          []*MessageEmbed         `json:"embeds"`
-	AllowedMentions *MessageAllowedMentions `json:"allowed_mentions,omitempty"`
-	Flags           MessageFlags            `json:"flags,omitempty"`
-	// Files to append to the message
-	Files []*File `json:"-"`
-	// Overwrite existing attachments
-	Attachments *[]*MessageAttachment `json:"attachments,omitempty"`
+	Content *string       `json:"content,omitempty"`
+	Embed   *MessageEmbed `json:"embed,omitempty"`
 
 	ID      string
 	Channel string
-
-	// TODO: Remove this when compatibility is not required.
-	Embed *MessageEmbed `json:"-"`
 }
 
 // NewMessageEdit returns a MessageEdit struct, initialized
@@ -286,67 +167,19 @@ func (m *MessageEdit) SetContent(str string) *MessageEdit {
 // SetEmbed is a convenience function for setting the embed,
 // so you can chain commands.
 func (m *MessageEdit) SetEmbed(embed *MessageEmbed) *MessageEdit {
-	m.Embeds = []*MessageEmbed{embed}
+	m.Embed = embed
 	return m
-}
-
-// SetEmbeds is a convenience function for setting the embeds,
-// so you can chain commands.
-func (m *MessageEdit) SetEmbeds(embeds []*MessageEmbed) *MessageEdit {
-	m.Embeds = embeds
-	return m
-}
-
-// AllowedMentionType describes the types of mentions used
-// in the MessageAllowedMentions type.
-type AllowedMentionType string
-
-// The types of mentions used in MessageAllowedMentions.
-const (
-	AllowedMentionTypeRoles    AllowedMentionType = "roles"
-	AllowedMentionTypeUsers    AllowedMentionType = "users"
-	AllowedMentionTypeEveryone AllowedMentionType = "everyone"
-)
-
-// MessageAllowedMentions allows the user to specify which mentions
-// Discord is allowed to parse in this message. This is useful when
-// sending user input as a message, as it prevents unwanted mentions.
-// If this type is used, all mentions must be explicitly whitelisted,
-// either by putting an AllowedMentionType in the Parse slice
-// (allowing all mentions of that type) or, in the case of roles and
-// users, explicitly allowing those mentions on an ID-by-ID basis.
-// For more information on this functionality, see:
-// https://discordapp.com/developers/docs/resources/channel#allowed-mentions-object-allowed-mentions-reference
-type MessageAllowedMentions struct {
-	// The mention types that are allowed to be parsed in this message.
-	// Please note that this is purposely **not** marked as omitempty,
-	// so if a zero-value MessageAllowedMentions object is provided no
-	// mentions will be allowed.
-	Parse []AllowedMentionType `json:"parse"`
-
-	// A list of role IDs to allow. This cannot be used when specifying
-	// AllowedMentionTypeRoles in the Parse slice.
-	Roles []string `json:"roles,omitempty"`
-
-	// A list of user IDs to allow. This cannot be used when specifying
-	// AllowedMentionTypeUsers in the Parse slice.
-	Users []string `json:"users,omitempty"`
-
-	// For replies, whether to mention the author of the message being replied to
-	RepliedUser bool `json:"replied_user"`
 }
 
 // A MessageAttachment stores data for message attachments.
 type MessageAttachment struct {
-	ID          string `json:"id"`
-	URL         string `json:"url"`
-	ProxyURL    string `json:"proxy_url"`
-	Filename    string `json:"filename"`
-	ContentType string `json:"content_type"`
-	Width       int    `json:"width"`
-	Height      int    `json:"height"`
-	Size        int    `json:"size"`
-	Ephemeral   bool   `json:"ephemeral"`
+	ID       string `json:"id"`
+	URL      string `json:"url"`
+	ProxyURL string `json:"proxy_url"`
+	Filename string `json:"filename"`
+	Width    int    `json:"width"`
+	Height   int    `json:"height"`
+	Size     int    `json:"size"`
 }
 
 // MessageEmbedFooter is a part of a MessageEmbed struct.
@@ -358,7 +191,7 @@ type MessageEmbedFooter struct {
 
 // MessageEmbedImage is a part of a MessageEmbed struct.
 type MessageEmbedImage struct {
-	URL      string `json:"url"`
+	URL      string `json:"url,omitempty"`
 	ProxyURL string `json:"proxy_url,omitempty"`
 	Width    int    `json:"width,omitempty"`
 	Height   int    `json:"height,omitempty"`
@@ -366,7 +199,7 @@ type MessageEmbedImage struct {
 
 // MessageEmbedThumbnail is a part of a MessageEmbed struct.
 type MessageEmbedThumbnail struct {
-	URL      string `json:"url"`
+	URL      string `json:"url,omitempty"`
 	ProxyURL string `json:"proxy_url,omitempty"`
 	Width    int    `json:"width,omitempty"`
 	Height   int    `json:"height,omitempty"`
@@ -374,9 +207,10 @@ type MessageEmbedThumbnail struct {
 
 // MessageEmbedVideo is a part of a MessageEmbed struct.
 type MessageEmbedVideo struct {
-	URL    string `json:"url,omitempty"`
-	Width  int    `json:"width,omitempty"`
-	Height int    `json:"height,omitempty"`
+	URL      string `json:"url,omitempty"`
+	ProxyURL string `json:"proxy_url,omitempty"`
+	Width    int    `json:"width,omitempty"`
+	Height   int    `json:"height,omitempty"`
 }
 
 // MessageEmbedProvider is a part of a MessageEmbed struct.
@@ -388,22 +222,22 @@ type MessageEmbedProvider struct {
 // MessageEmbedAuthor is a part of a MessageEmbed struct.
 type MessageEmbedAuthor struct {
 	URL          string `json:"url,omitempty"`
-	Name         string `json:"name"`
+	Name         string `json:"name,omitempty"`
 	IconURL      string `json:"icon_url,omitempty"`
 	ProxyIconURL string `json:"proxy_icon_url,omitempty"`
 }
 
 // MessageEmbedField is a part of a MessageEmbed struct.
 type MessageEmbedField struct {
-	Name   string `json:"name"`
-	Value  string `json:"value"`
+	Name   string `json:"name,omitempty"`
+	Value  string `json:"value,omitempty"`
 	Inline bool   `json:"inline,omitempty"`
 }
 
 // An MessageEmbed stores data for message embeds.
 type MessageEmbed struct {
 	URL         string                 `json:"url,omitempty"`
-	Type        EmbedType              `json:"type,omitempty"`
+	Type        string                 `json:"type,omitempty"`
 	Title       string                 `json:"title,omitempty"`
 	Description string                 `json:"description,omitempty"`
 	Timestamp   string                 `json:"timestamp,omitempty"`
@@ -416,20 +250,6 @@ type MessageEmbed struct {
 	Author      *MessageEmbedAuthor    `json:"author,omitempty"`
 	Fields      []*MessageEmbedField   `json:"fields,omitempty"`
 }
-
-// EmbedType is the type of embed
-// https://discord.com/developers/docs/resources/channel#embed-object-embed-types
-type EmbedType string
-
-// Block of valid EmbedTypes
-const (
-	EmbedTypeRich    EmbedType = "rich"
-	EmbedTypeImage   EmbedType = "image"
-	EmbedTypeVideo   EmbedType = "video"
-	EmbedTypeGifv    EmbedType = "gifv"
-	EmbedTypeArticle EmbedType = "article"
-	EmbedTypeLink    EmbedType = "link"
-)
 
 // MessageReactions holds a reactions object for a message.
 type MessageReactions struct {
@@ -449,10 +269,23 @@ type MessageActivityType int
 
 // Constants for the different types of Message Activity
 const (
-	MessageActivityTypeJoin        MessageActivityType = 1
-	MessageActivityTypeSpectate    MessageActivityType = 2
-	MessageActivityTypeListen      MessageActivityType = 3
-	MessageActivityTypeJoinRequest MessageActivityType = 5
+	MessageActivityTypeJoin = iota + 1
+	MessageActivityTypeSpectate
+	MessageActivityTypeListen
+	MessageActivityTypeJoinRequest
+)
+
+// MessageFlag describes an extra feature of the message
+type MessageFlag int
+
+// Constants for the different bit offsets of Message Flags
+const (
+	// This message has been published to subscribed channels (via Channel Following)
+	MessageFlagCrossposted = 1 << iota
+	// This message originated from a message in another channel (via Channel Following)
+	MessageFlagIsCrosspost
+	// Do not include any embeds when serializing this message
+	MessageFlagSuppressEmbeds
 )
 
 // MessageApplication is sent with Rich Presence-related chat embeds
@@ -466,30 +299,9 @@ type MessageApplication struct {
 
 // MessageReference contains reference data sent with crossposted messages
 type MessageReference struct {
-	MessageID       string `json:"message_id"`
-	ChannelID       string `json:"channel_id,omitempty"`
-	GuildID         string `json:"guild_id,omitempty"`
-	FailIfNotExists *bool  `json:"fail_if_not_exists,omitempty"`
-}
-
-func (m *Message) reference(failIfNotExists bool) *MessageReference {
-	return &MessageReference{
-		GuildID:         m.GuildID,
-		ChannelID:       m.ChannelID,
-		MessageID:       m.ID,
-		FailIfNotExists: &failIfNotExists,
-	}
-}
-
-// Reference returns a MessageReference of the given message.
-func (m *Message) Reference() *MessageReference {
-	return m.reference(true)
-}
-
-// SoftReference returns a MessageReference of the given message.
-// If the message doesn't exist it will instead be sent as a non-reply message.
-func (m *Message) SoftReference() *MessageReference {
-	return m.reference(false)
+	MessageID string `json:"message_id"`
+	ChannelID string `json:"channel_id"`
+	GuildID   string `json:"guild_id"`
 }
 
 // ContentWithMentionsReplaced will replace all @<id> mentions with the
@@ -555,15 +367,4 @@ func (m *Message) ContentWithMoreMentionsReplaced(s *Session) (content string, e
 		return "#" + channel.Name
 	})
 	return
-}
-
-// MessageInteraction contains information about the application command interaction which generated the message.
-type MessageInteraction struct {
-	ID   string          `json:"id"`
-	Type InteractionType `json:"type"`
-	Name string          `json:"name"`
-	User *User           `json:"user"`
-
-	// Member is only present when the interaction is from a guild.
-	Member *Member `json:"member"`
 }

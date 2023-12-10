@@ -1,7 +1,6 @@
 package discordgo
 
 import (
-	"fmt"
 	"net/http"
 	"strconv"
 	"testing"
@@ -19,7 +18,7 @@ func TestRatelimitReset(t *testing.T) {
 
 		headers.Set("X-RateLimit-Remaining", "0")
 		// Reset for approx 2 seconds from now
-		headers.Set("X-RateLimit-Reset", fmt.Sprint(float64(time.Now().Add(time.Second*2).UnixNano())/1e9))
+		headers.Set("X-RateLimit-Reset", strconv.FormatInt(time.Now().Add(time.Second*2).Unix(), 10))
 		headers.Set("Date", time.Now().Format(time.RFC850))
 
 		err := bucket.Release(headers)
@@ -57,7 +56,7 @@ func TestRatelimitGlobal(t *testing.T) {
 
 		headers.Set("X-RateLimit-Global", "1")
 		// Reset for approx 1 seconds from now
-		headers.Set("X-RateLimit-Reset-After", "1")
+		headers.Set("Retry-After", "1000")
 
 		err := bucket.Release(headers)
 		if err != nil {
@@ -106,7 +105,7 @@ func sendBenchReq(endpoint string, rl *RateLimiter) {
 	headers := http.Header(make(map[string][]string))
 
 	headers.Set("X-RateLimit-Remaining", "10")
-	headers.Set("X-RateLimit-Reset", fmt.Sprint(float64(time.Now().UnixNano())/1e9))
+	headers.Set("X-RateLimit-Reset", strconv.FormatInt(time.Now().Unix(), 10))
 	headers.Set("Date", time.Now().Format(time.RFC850))
 
 	bucket.Release(headers)

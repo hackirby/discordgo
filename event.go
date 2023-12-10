@@ -51,7 +51,6 @@ func registerInterfaceProvider(eh EventInterfaceProvider) {
 		// fmt.Errorf("event %s already registered", eh.Type())
 	}
 	registeredInterfaceProviders[eh.Type()] = eh
-	return
 }
 
 // eventHandlerInstance is a wrapper around an event handler, as functions
@@ -110,7 +109,7 @@ func (s *Session) addEventHandlerOnce(eventHandler EventHandler) func() {
 //     })
 //
 // List of events can be found at this page, with corresponding names in the
-// library for each event: https://discord.com/developers/docs/topics/gateway#event-names
+// library for each event: https://discordapp.com/developers/docs/topics/gateway#event-names
 // There are also synthetic events fired by the library internally which are
 // available for handling, like Connect, Disconnect, and RateLimit.
 // events.go contains all of the Discord WSAPI and synthetic events that can be handled.
@@ -157,7 +156,7 @@ func (s *Session) removeEventHandlerInstance(t string, ehi *eventHandlerInstance
 	onceHandlers := s.onceHandlers[t]
 	for i := range onceHandlers {
 		if onceHandlers[i] == ehi {
-			s.onceHandlers[t] = append(onceHandlers[:i], onceHandlers[i+1:]...)
+			s.onceHandlers[t] = append(onceHandlers[:i], handlers[i+1:]...)
 		}
 	}
 }
