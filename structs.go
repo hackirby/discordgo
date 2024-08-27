@@ -583,40 +583,80 @@ type VoiceState struct {
 
 // A Presence stores the online, offline, or idle and game status of Guild members.
 type Presence struct {
-	User   *User    `json:"user"`
-	Status Status   `json:"status"`
-	Game   *Game    `json:"game"`
-	Nick   string   `json:"nick"`
-	Roles  []string `json:"roles"`
-	Since  *int     `json:"since"`
+	User   *User     `json:"user"`
+	Status Status    `json:"status"`
+	Game   *Activity `json:"game"`
+	Nick   string    `json:"nick"`
+	Roles  []string  `json:"roles"`
+	Since  *int      `json:"since"`
 }
 
-// GameType is the type of "game" (see GameType* consts) in the Game struct
-type GameType int
+// ActivityType is the type of "Activity" (see ActivityType* consts) in the Activity struct
+type ActivityType int
 
-// Valid GameType values
+// Valid ActivityType values
 const (
-	GameTypeGame GameType = iota
-	GameTypeStreaming
-	GameTypeListening
-	GameTypeWatching
+	ActivityTypePlaying ActivityType = iota
+	ActivityTypeStreaming
+	ActivityTypeListening
+	ActivityTypeWatching
+	ActivityTypeCustom
+	ActivityTypeCompeting
+	ActivityTypeHang
 )
 
-// A Game struct holds the name of the "playing .." game for a user
-type Game struct {
-	Name          string     `json:"name"`
-	Type          GameType   `json:"type"`
-	URL           string     `json:"url,omitempty"`
-	Details       string     `json:"details,omitempty"`
-	State         string     `json:"state,omitempty"`
-	TimeStamps    TimeStamps `json:"timestamps,omitempty"`
-	Assets        Assets     `json:"assets,omitempty"`
-	ApplicationID string     `json:"application_id,omitempty"`
-	Instance      int8       `json:"instance,omitempty"`
-	// TODO: Party and Secrets (unknown structure)
+// A Activity struct holds the name of the "playing .." Activity for a user
+type Activity struct {
+	SessionID     string       `json:"session_id,omitempty"`
+	Name          string       `json:"name"`
+	Type          ActivityType `json:"type"`
+	URL           string       `json:"url,omitempty"`
+	Details       string       `json:"details,omitempty"`
+	State         string       `json:"state,omitempty"`
+	ApplicationID string       `json:"application_id,omitempty"`
+	Instance      int8         `json:"instance,omitempty"`
+	SyncId        string       `json:"syncId,omitempty"`
+	Buttons       []string     `json:"buttons,omitempty"`
+	TimeStamps    TimeStamps   `json:"timestamps,omitempty"`
+	Assets        Assets       `json:"assets,omitempty"`
+	Secrets       Secrets      `json:"secrets,omitempty"`
+	Party         Party        `json:"party,omitempty"`
+	Metadata      Metadata     `json:"metadata,omitempty"`
+	Emoji         SimpleEmoji  `json:"emoji,omitempty"`
+	Platform      string       `json:"platform,omitempty"`
+	Flags         int          `json:"flags,omitempty"`
+	ID            string       `json:"id,omitempty"`
 }
 
-// A TimeStamps struct contains start and end times used in the rich presence "playing .." Game
+// SimpleEmoji is a struct containing emoji information
+type SimpleEmoji struct {
+	Name     string `json:"name,omitempty"`
+	ID       string `json:"id,omitempty"`
+	Animated bool   `json:"animated,omitempty"`
+}
+
+// Party is a struct containing party information
+type Party struct {
+	ID   string `json:"id,omitempty"`
+	Size []int  `json:"size,omitempty"`
+}
+
+// Secrets is a struct containing secrets for the Activity
+type Secrets struct {
+	Join string `json:"join,omitempty"`
+}
+
+// Metadata is a struct containing rich presence metadata
+type Metadata struct {
+	ButtonUrls []string `json:"button_urls,omitempty"`
+
+	// Spotify
+	AlbumId    string   `json:"album_id,omitempty"`
+	ContextUri string   `json:"context_uri,omitempty"`
+	ArtistIds  []string `json:"artist_ids,omitempty"`
+}
+
+// A TimeStamps struct contains start and end times used in the rich presence "playing .." Activity
 type TimeStamps struct {
 	EndTimestamp   int64 `json:"end,omitempty"`
 	StartTimestamp int64 `json:"start,omitempty"`
@@ -637,7 +677,7 @@ func (t *TimeStamps) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// An Assets struct contains assets and labels used in the rich presence "playing .." Game
+// An Assets struct contains assets and labels used in the rich presence "playing .." Activity
 type Assets struct {
 	LargeImageID string `json:"large_image,omitempty"`
 	SmallImageID string `json:"small_image,omitempty"`

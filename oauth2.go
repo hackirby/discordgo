@@ -147,3 +147,25 @@ func (s *Session) ApplicationBotCreate(appID string) (st *User, err error) {
 	err = unmarshal(body, &st)
 	return
 }
+
+// Discord Bot External Assets
+type ExternalAsset struct {
+	Url string `json:"url"`
+	ExternalAssetPath string `json:"external_asset_path"`
+}
+
+// ExternalAssets returns an application's external assets
+// appID : The ID of an Application
+func (s *Session) ExternalAssets(appID string, assetsLinks []string) (assets []*ExternalAsset, err error) {
+	data := struct {
+		Urls []string `json:"urls"`
+	}{assetsLinks}
+
+	body, err := s.RequestWithBucketID("POST", "https://discord.com/api/v9/applications/" + appID + "/external-assets", data, "https://discord.com/api/v9/applications//external-assets")
+	if err != nil {
+		return nil, err
+	}
+
+	err = unmarshal(body, &assets)
+	return
+}
