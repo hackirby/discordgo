@@ -615,7 +615,7 @@ type Activity struct {
 	State         string       `json:"state,omitempty"`
 	ApplicationID string       `json:"application_id,omitempty"`
 	Instance      int8         `json:"instance,omitempty"`
-	SyncId        string       `json:"syncId,omitempty"`
+	SyncId        string       `json:"sync_id,omitempty"`
 	Buttons       []string     `json:"buttons,omitempty"`
 	TimeStamps    TimeStamps   `json:"timestamps,omitempty"`
 	Assets        Assets       `json:"assets,omitempty"`
